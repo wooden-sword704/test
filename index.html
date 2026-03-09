@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Minecraft UI Digital Clock</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-1:#0b1220;
+      --bg-2:#071021;
+      --panel:#0f1720;
+      --accent:#8bd14b;
+      --accent-dark:#6aa636;
+      --frame:#2b2f33;
+      --glass:rgba(255,255,255,0.03);
+    }
+    html,body{height:100%;}
+    body{
+      margin:0;
+      font-family:'Press Start 2P', monospace;
+      background:linear-gradient(180deg,var(--bg-1),var(--bg-2));
+      color:#e6f7d6;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      overflow:hidden;
+    }
+    canvas.particles{position:fixed;inset:0;z-index:0;display:block}
+
+    /* Center panel */
+    .wrap{
+      position:relative;
+      z-index:2;
+      height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      pointer-events:none;
+    }
+
+    .panel{
+      width:min(760px,92vw);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.12));
+      padding:28px;
+      box-sizing:border-box;
+      display:flex;
+      gap:18px;
+      align-items:center;
+      justify-content:space-between;
+      border-radius:6px;
+      border:8px solid var(--frame);
+      box-shadow:
+        0 12px 0 rgba(0,0,0,0.6),
+        0 0 0 4px rgba(0,0,0,0.25) inset;
+      pointer-events:auto;
+      backdrop-filter:blur(4px) saturate(120%);
+    }
+
+    /* Minecraft-style pixel block corners */
+    .panel:before, .panel:after{
+      content:'';
+      position:absolute;
+      width:18px;height:18px;
+      background:linear-gradient(180deg,var(--panel),var(--frame));
+      box-shadow: 6px 6px 0 rgba(0,0,0,0.35);
+    }
+
+    .panel:before{left:18px;top:18px}
+    .panel:after{right:18px;bottom:18px}
+
+    .left{
+      display:flex;flex-direction:column;gap:6px;align-items:flex-start;
+    }
+
+    .title{
+      font-size:12px;color:#cfe9a9;margin:0 0 4px 0;letter-spacing:1px;
+    }
+
+    .clock{
+      font-size:40px;line-height:1;color:var(--accent);text-shadow:0 2px 0 var(--accent-dark), 0 6px 18px rgba(139,209,75,0.06);
+      transform:translateY(-2px);
+    }
+
+    .date{
+      font-size:10px;color:#bfe8a1;opacity:0.9;margin-top:6px;
+    }
+
+    /* Right side: status box that looks like Minecraft inventory */
+    .status{
+      width:260px;min-height:106px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.06));
+      border:4px solid #211e18;padding:12px;box-sizing:border-box;border-radius:4px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;
+    }
+
+    .status .row{display:flex;gap:10px;align-items:center}
+    .indicator{width:12px;height:12px;background:var(--accent);box-shadow:0 1px 0 rgba(0,0,0,0.6);border:2px solid #1b1b1b}
+    .label{font-size:10px;color:#cfe9a9}
+
+    /* Pixelated look */
+    .panel, .status, .clock{image-rendering:crisp-edges;}
+
+    /* Footer hint */
+    .hint{font-size:9px;color:#97b77a;opacity:0.9}
+
+    /* Responsive tweaks */
+    @media (max-width:640px){
+      .panel{flex-direction:column;align-items:center}
+      .status{width:100%}
+    }
+  </style>
+</head>
+<body>
+  <canvas class="particles"></canvas>
+  <div class="wrap">
+    <div class="panel" role="region" aria-label="Minecraft style clock">
+      <div class="left">
+        <div class="title">§ デジタル時計</div>
+        <div class="clock" id="clock">--:--:--</div>
+        <div class="date" id="date">----</div>
+        <div class="hint">クリックで24/12時間切替 — マウスを動かすとパーティクルが反応</div>
+      </div>
+      <div class="status" id="status">
+        <div class="row"><div class="indicator" id="utc"></div><div class="label">ローカル時刻</div></div>
+        <div class="row"><div class="indicator" id="tick"></div><div class="label" id="tickLabel">秒表示: ON</div></div>
+        <div class="row"><div style="width:14px;height:14px;background:#fff;border:2px solid #1b1b1b"></div><div class="label">Minecraft UI風</div></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Clock logic + UI toggles
+    (function(){
+      const clockEl = document.getElementById('clock');
+      const dateEl = document.getElementById('date');
+      const tickEl = document.getElementById('tick');
+      const tickLabel = document.getElementById('tickLabel');
+      let showSeconds = true;
+      let use24 = true;
+
+      function pad(n){ return n.toString().padStart(2,'0'); }
+      function update(){
+        const now = new Date();
+        let h = now.getHours();
+        const m = pad(now.getMinutes());
+        const s = pad(now.getSeconds());
+        let ampm = '';
+        if(!use24){ ampm = h>=12? 'PM':'AM'; h = h % 12 || 12; }
+        const hh = pad(h);
+        clockEl.textContent = showSeconds ? `${hh}:${m}:${s}` : `${hh}:${m}`;
+        dateEl.textContent = now.toLocaleDateString('ja-JP', {weekday:'short', year:'numeric', month:'short', day:'numeric'} )
+                              + (ampm? ' '+ampm:'');
+        tickEl.style.background = (now.getMilliseconds() < 500) ? 'var(--accent)' : '#3a3a3a';
+        tickLabel.textContent = '秒表示: ' + (showSeconds? 'ON' : 'OFF');
+      }
+      update();
+      setInterval(update, 250);
+
+      document.querySelector('.panel').addEventListener('click', ()=>{
+        showSeconds = !showSeconds;
+      });
+      document.querySelector('.panel').addEventListener('contextmenu', (e)=>{
+        e.preventDefault(); use24 = !use24; update();
+      });
+    })();
+
+    // Particles canvas (blocky particles to fit Minecraft feel)
+    (function(){
+      const canvas = document.querySelector('canvas.particles');
+      const ctx = canvas.getContext('2d');
+      let w=0,h=0, DPR = Math.max(1, window.devicePixelRatio || 1);
+      function resize(){
+        // use full viewport dimensions (clientWidth sometimes returns 0 early)
+        w = window.innerWidth;
+        h = window.innerHeight;
+        // keep CSS size in sync too
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        canvas.width = Math.floor(w * DPR);
+        canvas.height = Math.floor(h * DPR);
+        ctx.setTransform(DPR,0,0,DPR,0,0);
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      const particles = [];
+      for(let i=0;i<180;i++) particles.push(randomParticle(true));
+
+      let mouse = {x:-9999,y:-9999};
+      window.addEventListener('mousemove', (e)=>{ mouse.x = e.clientX; mouse.y = e.clientY; });
+      window.addEventListener('mouseleave', ()=>{ mouse.x = -9999; mouse.y = -9999; });
+
+      function randomParticle(init){
+        const size = Math.random()*6 + 2;
+        return {
+          x: Math.random()*w,
+          y: init ? Math.random()*h : (h + Math.random()*60),
+          vx: (Math.random()-0.5) * 0.3,
+          vy: - (0.15 + Math.random()*0.6),
+          size: Math.round(size),
+          hue: 80 + Math.random()*40,
+          alpha: 0.6 + Math.random()*0.4,
+          life: 0
+        };
+      }
+
+      function step(){
+        ctx.clearRect(0,0,w,h);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+        ctx.fillRect(0,0,w,h);
+        for(let p of particles){
+          const dx = p.x - mouse.x, dy = p.y - mouse.y;
+          const dist2 = dx*dx + dy*dy;
+          if(dist2 < 90000){
+            const f = 80000 / Math.max(1000, dist2);
+            p.vx += dx * 0.0006 * f;
+            p.vy += dy * 0.0006 * f;
+          }
+          p.x += p.vx; p.y += p.vy;
+          p.vx *= 0.995; p.vy *= 0.999;
+          p.life += 1;
+          ctx.fillStyle = `hsla(${p.hue},60%,60%,${p.alpha})`;
+          const s = Math.max(1, Math.round(p.size));
+          for(let sx=0;sx<s;sx+=Math.max(1,Math.round(s/2))){
+            for(let sy=0;sy<s;sy+=Math.max(1,Math.round(s/2))){
+              ctx.fillRect(Math.round(p.x + sx - s/2), Math.round(p.y + sy - s/2),
+                           Math.max(1,Math.round(s/2)), Math.max(1,Math.round(s/2)));
+            }
+          }
+          if(p.y < -40 || p.x < -100 || p.x > w+100 || p.life > 1000) {
+            const idx = particles.indexOf(p);
+            particles[idx] = randomParticle(false);
+          }
+        }
+        requestAnimationFrame(step);
+      }
+      step();
+
+      let lastW = w, lastH = h;
+      setInterval(()=>{
+        if(Math.abs(lastW-w)>80 || Math.abs(lastH-h)>80){
+          lastW=w; lastH=h;
+          particles.length = 0;
+          for(let i=0;i<Math.floor(w*h/40000)+120;i++) particles.push(randomParticle(true));
+        }
+      },1000);
+    })();
+  </script>
+</body>
+</html>
