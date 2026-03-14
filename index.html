@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Minecraft UI Digital Clock</title>
+  <title>デジタル時計</title>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
     :root{
@@ -19,7 +19,7 @@
     body{
       margin:0;
       font-family:'Press Start 2P', monospace;
-      background:linear-gradient(180deg,var(--bg-1),var(--bg-2));
+      background:var(--bg);
       color:#e6f7d6;
       -webkit-font-smoothing:antialiased;
       -moz-osx-font-smoothing:grayscale;
@@ -77,7 +77,7 @@
     }
 
     .clock{
-      font-size:40px;line-height:1;color:var(--accent);text-shadow:0 2px 0 var(--accent-dark), 0 6px 18px rgba(139,209,75,0.06);
+      font-size:64px;line-height:1;color:var(--accent);text-shadow:0 2px 0 var(--accent-dark), 0 6px 18px rgba(139,209,75,0.06);
       transform:translateY(-2px);
     }
 
@@ -92,6 +92,16 @@
     }
 
     .status .row{display:flex;gap:10px;align-items:center}
+    .status .row.toggle{cursor:pointer;border:none;background:transparent;padding:0;font:inherit;color:inherit;text-align:left}
+    .status .row.toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    #particlesToggle, #mouseScatterToggle {appearance:none;-webkit-appearance:none;border:none;background:transparent;padding:0;display:flex;align-items:center;justify-content:center}
+    #particlesToggle:focus-visible, #mouseScatterToggle:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+    .status select{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.2);color:inherit;font:inherit;padding:4px 6px;border-radius:3px}
+    #particleSettingsToggle{appearance:none;-webkit-appearance:none;border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:0;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+    .particle-settings{display:flex;flex-direction:column;gap:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.12)}
+    .particle-settings.collapsed{display:none}
+    .particle-settings .row{align-items:center}
+    .particle-settings input[type=range]{flex:1;}
     .indicator{width:12px;height:12px;background:var(--accent);box-shadow:0 1px 0 rgba(0,0,0,0.6);border:2px solid #1b1b1b}
     .label{font-size:10px;color:#cfe9a9}
 
@@ -111,17 +121,30 @@
 <body>
   <canvas class="particles"></canvas>
   <div class="wrap">
-    <div class="panel" role="region" aria-label="Minecraft style clock">
+    <div class="panel" role="region" aria-label="デジタル時計">
       <div class="left">
-        <div class="title">§ デジタル時計</div>
-        <div class="clock" id="clock">--:--:--</div>
+        <div class="title">CraftClock</div>
+        <div class="clock" id="clock" aria-label="クリックで12/24時間切替">--:--:--</div>
         <div class="date" id="date">----</div>
-        <div class="hint">クリックで24/12時間切替 — マウスを動かすとパーティクルが反応</div>
+        <div class="hint">時計をクリックで12/24時間切替、右のボタンで秒表示切替</div>
       </div>
       <div class="status" id="status">
         <div class="row"><div class="indicator" id="utc"></div><div class="label">ローカル時刻</div></div>
-        <div class="row"><div class="indicator" id="tick"></div><div class="label" id="tickLabel">秒表示: ON</div></div>
-        <div class="row"><div style="width:14px;height:14px;background:#fff;border:2px solid #1b1b1b"></div><div class="label">Minecraft UI風</div></div>
+        <button class="row toggle" id="secondsToggle" type="button" aria-pressed="true"><div class="indicator" id="tick"></div><div class="label" id="tickLabel">秒表示: ON</div></button>
+        <div class="row"><div class="label">テーマ</div><select id="themeSelect" aria-label="テーマを選択"><option value="default">ダーク</option><option value="mint">ミント</option><option value="sunset">サンセット</option><option value="yajuu">野獣先輩</option></select></div>
+        <div class="row particle-header">
+          <div class="label">パーティクル</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button id="particlesToggle" type="button" aria-pressed="true" aria-label="パーティクル: ON"><div class="indicator"></div></button>
+            <button id="particleSettingsToggle" type="button" aria-expanded="true" aria-label="パーティクル設定を折りたたむ">▾</button>
+          </div>
+        </div>
+        <div class="particle-settings">
+          <div class="row"><div class="label">密度</div><input id="particleDensity" type="range" min="0.2" max="2" step="0.1" value="1"></div>
+          <div class="row"><div class="label">サイズ</div><input id="particleSize" type="range" min="1" max="10" step="1" value="4"></div>
+          <div class="row"><div class="label">速度</div><input id="particleSpeed" type="range" min="0.2" max="2" step="0.1" value="1"></div>
+          <div class="row"><div class="label">マウス反応</div><button id="mouseScatterToggle" type="button" aria-pressed="true" aria-label="マウス反応をオンにする"><div class="indicator"></div></button></div>
+        </div>
       </div>
     </div>
   </div>
@@ -132,8 +155,45 @@
       const dateEl = document.getElementById('date');
       const tickEl = document.getElementById('tick');
       const tickLabel = document.getElementById('tickLabel');
+      const secondsToggleBtn = document.getElementById('secondsToggle');
       let showSeconds = true;
       let use24 = true;
+
+      const savedShowSeconds = localStorage.getItem('craftClock.showSeconds');
+      if (savedShowSeconds !== null) showSeconds = savedShowSeconds === 'true';
+      const savedUse24 = localStorage.getItem('craftClock.use24');
+      if (savedUse24 !== null) use24 = savedUse24 === 'true';
+
+      const themeSelect = document.getElementById('themeSelect');
+      const themes = {
+        default: { '--bg': 'linear-gradient(180deg, var(--bg-1), var(--bg-2))', '--bg-1': '#0b1220', '--bg-2': '#071021', '--panel': '#0f1720', '--accent': '#8bd14b', '--accent-dark': '#6aa636', '--frame': '#2b2f33', '--glass': 'rgba(255,255,255,0.03)', '--particle-hue': '80', '--particle-hue-spread': '40' },
+        mint:    { '--bg': 'linear-gradient(180deg, var(--bg-1), var(--bg-2))', '--bg-1': '#08120f', '--bg-2': '#0f241b', '--panel': '#122a1f', '--accent': '#7ef3a2', '--accent-dark': '#2fa16b', '--frame': '#1f3526', '--glass': 'rgba(255,255,255,0.05)', '--particle-hue': '150', '--particle-hue-spread': '50' },
+        sunset:  { '--bg': 'linear-gradient(180deg, var(--bg-1), var(--bg-2))', '--bg-1': '#2a0d1e', '--bg-2': '#34162e', '--panel': '#3b1f3f', '--accent': '#f4a261', '--accent-dark': '#d46d2b', '--frame': '#4b2e3d', '--glass': 'rgba(255,255,255,0.04)', '--particle-hue': '25', '--particle-hue-spread': '40' },
+        "yajuu": { '--bg': "url('https://www.野獣先輩.com/img/medikara.jpg') center/cover no-repeat, linear-gradient(180deg, rgba(159,66,13,0.85), rgba(50,20,10,0.85))", '--bg-1': '#9F420D', '--bg-2': '#3e1f0b', '--panel': '#3b1b0e', '--accent': '#9F420D', '--accent-dark': '#7a310a', '--frame': '#2b160c', '--glass': 'rgba(255,255,255,0.05)', '--particle-hue': '14', '--particle-hue-spread': '30' },
+      };
+      let currentTheme = 'default';
+      const savedTheme = localStorage.getItem('craftClock.theme');
+      if (savedTheme && themes[savedTheme]) currentTheme = savedTheme;
+
+      function applyTheme(name){
+        const cfg = themes[name] || themes.default;
+        const root = document.documentElement;
+        Object.entries(cfg).forEach(([k,v]) => root.style.setProperty(k, v));
+        currentTheme = name;
+        if (themeSelect) themeSelect.value = name;
+        // Notify other systems (particles) about theme change
+        document.dispatchEvent(new CustomEvent('craftClockThemeChange', { detail: { theme: name } }));
+      }
+      applyTheme(currentTheme);
+
+      if (themeSelect) {
+        themeSelect.addEventListener('change', (e)=>{
+          const v = e.target.value;
+          if (!themes[v]) return;
+          applyTheme(v);
+          localStorage.setItem('craftClock.theme', v);
+        });
+      }
 
       function pad(n){ return n.toString().padStart(2,'0'); }
       function update(){
@@ -147,25 +207,105 @@
         clockEl.textContent = showSeconds ? `${hh}:${m}:${s}` : `${hh}:${m}`;
         dateEl.textContent = now.toLocaleDateString('ja-JP', {weekday:'short', year:'numeric', month:'short', day:'numeric'} )
                               + (ampm? ' '+ampm:'');
-        tickEl.style.background = (now.getMilliseconds() < 500) ? 'var(--accent)' : '#3a3a3a';
+        if (showSeconds) {
+          tickEl.style.background = 'var(--accent)'
+        } else {
+          tickEl.style.background = '#3a3a3a';
+        }
         tickLabel.textContent = '秒表示: ' + (showSeconds? 'ON' : 'OFF');
+        secondsToggleBtn.setAttribute('aria-pressed', showSeconds);
       }
       update();
       setInterval(update, 250);
 
-      document.querySelector('.panel').addEventListener('click', ()=>{
+      secondsToggleBtn.addEventListener('click', ()=>{
         showSeconds = !showSeconds;
+        localStorage.setItem('craftClock.showSeconds', showSeconds);
+        update();
       });
-      document.querySelector('.panel').addEventListener('contextmenu', (e)=>{
-        e.preventDefault(); use24 = !use24; update();
-      });
+
+      const toggleUse24 = ()=>{
+        use24 = !use24;
+        localStorage.setItem('craftClock.use24', use24);
+        update();
+      };
+
+      clockEl.addEventListener('click', toggleUse24);
     })();
 
     // Particles canvas (blocky particles to fit Minecraft feel)
     (function(){
       const canvas = document.querySelector('canvas.particles');
+      if (!canvas) return;
+
       const ctx = canvas.getContext('2d');
+      const particlesToggle = document.getElementById('particlesToggle');
+      const particleSettingsToggle = document.getElementById('particleSettingsToggle');
+      const particleSettingsPanel = document.querySelector('.particle-settings');
+      const particleDensity = document.getElementById('particleDensity');
+      const particleSize = document.getElementById('particleSize');
+      const particleSpeed = document.getElementById('particleSpeed');
+      const mouseScatterToggle = document.getElementById('mouseScatterToggle');
+
+      let storedParticles = {};
+      try {
+        storedParticles = JSON.parse(localStorage.getItem('craftClock.particles') || '{}') || {};
+      } catch (err) {
+        storedParticles = {};
+      }
+      const particleConfig = {
+        enabled: typeof storedParticles.enabled === 'boolean' ? storedParticles.enabled : true,
+        density: typeof storedParticles.density === 'number' ? storedParticles.density : 1,
+        size: typeof storedParticles.size === 'number' ? storedParticles.size : 4,
+        speed: typeof storedParticles.speed === 'number' ? storedParticles.speed : 1,
+        settingsOpen: typeof storedParticles.settingsOpen === 'boolean' ? storedParticles.settingsOpen : true,
+        mouseScatter: typeof storedParticles.mouseScatter === 'boolean' ? storedParticles.mouseScatter : true,
+      };
+
+      const saveParticles = () => localStorage.setItem('craftClock.particles', JSON.stringify(particleConfig));
+      const updateParticleUI = () => {
+        if (particlesToggle) {
+          particlesToggle.setAttribute('aria-pressed', particleConfig.enabled);
+          particlesToggle.setAttribute('aria-label', `パーティクル: ${particleConfig.enabled ? 'ON' : 'OFF'}`);
+          const indicator = particlesToggle.querySelector('.indicator');
+          if (indicator) indicator.style.background = particleConfig.enabled ? 'var(--accent)' : '#3a3a3a';
+        }
+
+        if (particleSettingsToggle) {
+          particleSettingsToggle.setAttribute('aria-expanded', particleConfig.settingsOpen);
+          particleSettingsToggle.textContent = particleConfig.settingsOpen ? '▾' : '▸';
+        }
+        if (particleSettingsPanel) {
+          particleSettingsPanel.classList.toggle('collapsed', !particleConfig.settingsOpen);
+        }
+
+        if (mouseScatterToggle) {
+          mouseScatterToggle.setAttribute('aria-pressed', particleConfig.mouseScatter);
+          mouseScatterToggle.setAttribute('aria-label', `マウス反応: ${particleConfig.mouseScatter ? 'ON' : 'OFF'}`);
+          const indicator = mouseScatterToggle.querySelector('.indicator');
+          if (indicator) indicator.style.background = particleConfig.mouseScatter ? 'var(--accent)' : '#3a3a3a';
+        }
+
+        if (particleDensity) particleDensity.value = particleConfig.density;
+        if (particleSize) particleSize.value = particleConfig.size;
+        if (particleSpeed) particleSpeed.value = particleConfig.speed;
+      };
+
       let w=0,h=0, DPR = Math.max(1, window.devicePixelRatio || 1);
+      const particles = [];
+      const getParticleHueConfig = () => {
+        const style = getComputedStyle(document.documentElement);
+        const base = parseFloat(style.getPropertyValue('--particle-hue')) || 80;
+        const spread = parseFloat(style.getPropertyValue('--particle-hue-spread')) || 40;
+        return { base, spread };
+      };
+      const rebuildParticles = ()=>{
+        particles.length = 0;
+        const { base, spread } = getParticleHueConfig();
+        const count = Math.max(0, Math.floor(w*h/(40000/particleConfig.density)) + 120);
+        for(let i=0;i<count;i++) particles.push(randomParticle(true, base, spread));
+      };
+
       function resize(){
         // use full viewport dimensions (clientWidth sometimes returns 0 early)
         w = window.innerWidth;
@@ -176,26 +316,29 @@
         canvas.width = Math.floor(w * DPR);
         canvas.height = Math.floor(h * DPR);
         ctx.setTransform(DPR,0,0,DPR,0,0);
+        rebuildParticles();
       }
       window.addEventListener('resize', resize);
       resize();
-
-      const particles = [];
-      for(let i=0;i<180;i++) particles.push(randomParticle(true));
 
       let mouse = {x:-9999,y:-9999};
       window.addEventListener('mousemove', (e)=>{ mouse.x = e.clientX; mouse.y = e.clientY; });
       window.addEventListener('mouseleave', ()=>{ mouse.x = -9999; mouse.y = -9999; });
 
-      function randomParticle(init){
-        const size = Math.random()*6 + 2;
+      function randomParticle(init, hueBase = 80, hueSpread = 40){
+        const minSize = 1;
+        const maxSize = Math.max(minSize, particleConfig.size);
+        const size = Math.random()*(maxSize - minSize) + minSize;
+        const speed = Math.max(0.1, particleConfig.speed);
         return {
           x: Math.random()*w,
           y: init ? Math.random()*h : (h + Math.random()*60),
-          vx: (Math.random()-0.5) * 0.3,
-          vy: - (0.15 + Math.random()*0.6),
+          vx: (Math.random()-0.5) * 0.3 * speed,
+          vy: - (0.15 + Math.random()*0.6) * speed,
           size: Math.round(size),
-          hue: 80 + Math.random()*40,
+          hue: hueBase + Math.random()*hueSpread,
+          hueBase,
+          hueSpread,
           alpha: 0.6 + Math.random()*0.4,
           life: 0
         };
@@ -205,13 +348,19 @@
         ctx.clearRect(0,0,w,h);
         ctx.fillStyle = 'rgba(0,0,0,0.12)';
         ctx.fillRect(0,0,w,h);
+        if (!particleConfig.enabled) {
+          requestAnimationFrame(step);
+          return;
+        }
+
         for(let p of particles){
           const dx = p.x - mouse.x, dy = p.y - mouse.y;
           const dist2 = dx*dx + dy*dy;
-          if(dist2 < 90000){
+          if(particleConfig.mouseScatter && dist2 < 90000){
             const f = 80000 / Math.max(1000, dist2);
-            p.vx += dx * 0.0006 * f;
-            p.vy += dy * 0.0006 * f;
+            const influence = 0.0006 * Math.max(0.1, particleConfig.speed);
+            p.vx += dx * influence * f;
+            p.vy += dy * influence * f;
           }
           p.x += p.vx; p.y += p.vy;
           p.vx *= 0.995; p.vy *= 0.999;
@@ -226,19 +375,61 @@
           }
           if(p.y < -40 || p.x < -100 || p.x > w+100 || p.life > 1000) {
             const idx = particles.indexOf(p);
-            particles[idx] = randomParticle(false);
+            particles[idx] = randomParticle(false, p.hueBase, p.hueSpread);
           }
         }
         requestAnimationFrame(step);
       }
+      updateParticleUI();
+      rebuildParticles();
       step();
+
+      // Rebuild particles when theme changes so their colors match the current theme
+      document.addEventListener('craftClockThemeChange', ()=>{
+        rebuildParticles();
+      });
+
+      if (particlesToggle) {
+        particlesToggle.addEventListener('click', ()=>{
+          particleConfig.enabled = !particleConfig.enabled;
+          saveParticles();
+          updateParticleUI();
+        });
+      }
+
+      if (particleSettingsToggle) {
+        particleSettingsToggle.addEventListener('click', ()=>{
+          particleConfig.settingsOpen = !particleConfig.settingsOpen;
+          saveParticles();
+          updateParticleUI();
+        });
+      }
+
+      if (mouseScatterToggle) {
+        mouseScatterToggle.addEventListener('click', ()=>{
+          particleConfig.mouseScatter = !particleConfig.mouseScatter;
+          saveParticles();
+          updateParticleUI();
+        });
+      }
+
+      const onParticleSettingChange = () => {
+        if (particleDensity) particleConfig.density = parseFloat(particleDensity.value);
+        if (particleSize) particleConfig.size = parseFloat(particleSize.value);
+        if (particleSpeed) particleConfig.speed = parseFloat(particleSpeed.value);
+        saveParticles();
+        rebuildParticles();
+      };
+
+      if (particleDensity) particleDensity.addEventListener('input', onParticleSettingChange);
+      if (particleSize) particleSize.addEventListener('input', onParticleSettingChange);
+      if (particleSpeed) particleSpeed.addEventListener('input', onParticleSettingChange);
 
       let lastW = w, lastH = h;
       setInterval(()=>{
         if(Math.abs(lastW-w)>80 || Math.abs(lastH-h)>80){
           lastW=w; lastH=h;
-          particles.length = 0;
-          for(let i=0;i<Math.floor(w*h/40000)+120;i++) particles.push(randomParticle(true));
+          rebuildParticles();
         }
       },1000);
     })();
