@@ -85,6 +85,14 @@
       font-size:10px;color:#bfe8a1;opacity:0.9;margin-top:6px;
     }
 
+    /* Analog clock styles */
+    .analog{display:flex;align-items:center;justify-content:center;padding-top:6px}
+    .analog svg{width:160px;height:160px;image-rendering:crisp-edges}
+    #ticks line{stroke:rgba(255,255,255,0.06);stroke-width:2}
+    #ticks line.major{stroke:rgba(255,255,255,0.12);stroke-width:3}
+    #hourHand,#minuteHand{transition:transform 0.15s linear}
+    #secondHand{transition:transform 0.05s linear}
+
     /* Right side: status box that looks like Minecraft inventory */
     .status{
       width:260px;min-height:106px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.06));
@@ -125,6 +133,21 @@
       <div class="left">
         <div class="title">CraftClock</div>
         <div class="clock" id="clock" aria-label="クリックで12/24時間切替">--:--:--</div>
+        <div class="analog" id="analog" aria-hidden="true" role="img" aria-label="アナログ時計" style="display:none">
+          <svg viewBox="0 0 200 200" width="200" height="200" role="presentation">
+            <defs>
+              <filter id="shadow"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.45"/></filter>
+            </defs>
+            <g transform="translate(100,100)">
+              <circle r="90" fill="var(--panel)" stroke="var(--frame)" stroke-width="8" filter="url(#shadow)" />
+              <g id="ticks"></g>
+              <line id="hourHand" x1="0" y1="0" x2="0" y2="-48" stroke="var(--accent)" stroke-width="6" stroke-linecap="round" />
+              <line id="minuteHand" x1="0" y1="0" x2="0" y2="-68" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" />
+              <line id="secondHand" x1="0" y1="10" x2="0" y2="-78" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" opacity="0.9" />
+              <circle r="4" fill="var(--accent-dark)" />
+            </g>
+          </svg>
+        </div>
         <div class="date" id="date">----</div>
         <div class="hint">時計をクリックで12/24時間切替、右のボタンで秒表示切替</div>
       </div>
@@ -132,6 +155,7 @@
         <div class="row"><div class="indicator" id="utc"></div><div class="label">ローカル時刻</div></div>
         <button class="row toggle" id="secondsToggle" type="button" aria-pressed="true"><div class="indicator" id="tick"></div><div class="label" id="tickLabel">秒表示: ON</div></button>
         <div class="row"><div class="label">テーマ</div><select id="themeSelect" aria-label="テーマを選択"><option value="default">ダーク</option><option value="mint">ミント</option><option value="sunset">サンセット</option><option value="yajuu">野獣先輩</option></select></div>
+        <div class="row"><div class="label">表示</div><select id="displayModeSelect" aria-label="表示モードを選択"><option value="digital">デジタル</option><option value="analog">アナログ</option></select></div>
         <div class="row particle-header">
           <div class="label">パーティクル</div>
           <div style="display:flex;align-items:center;gap:6px">
@@ -216,7 +240,6 @@
         secondsToggleBtn.setAttribute('aria-pressed', showSeconds);
       }
       update();
-      setInterval(update, 250);
 
       secondsToggleBtn.addEventListener('click', ()=>{
         showSeconds = !showSeconds;
@@ -231,6 +254,84 @@
       };
 
       clockEl.addEventListener('click', toggleUse24);
+
+      // --- Analog clock + display mode support ---
+      const analogEl = document.getElementById('analog');
+      const hourHand = document.getElementById('hourHand');
+      const minuteHand = document.getElementById('minuteHand');
+      const secondHand = document.getElementById('secondHand');
+      const ticksGroup = document.getElementById('ticks');
+      const displayModeSelect = document.getElementById('displayModeSelect');
+
+      function buildTicks(){
+        if(!ticksGroup) return;
+        ticksGroup.innerHTML = '';
+        for(let i=0;i<60;i++){
+          const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+          const angle = (i/60) * Math.PI*2;
+          const rOuter = 86;
+          const rInner = (i%5===0)?66:74;
+          const x1 = Math.round(Math.sin(angle)*rInner);
+          const y1 = Math.round(-Math.cos(angle)*rInner);
+          const x2 = Math.round(Math.sin(angle)*rOuter);
+          const y2 = Math.round(-Math.cos(angle)*rOuter);
+          line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+          line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+          if(i%5===0) line.classList.add('major');
+          ticksGroup.appendChild(line);
+        }
+      }
+      buildTicks();
+
+      const savedDisplayMode = localStorage.getItem('craftClock.displayMode');
+      let displayMode = savedDisplayMode === 'analog' ? 'analog' : 'digital';
+      if(displayModeSelect) displayModeSelect.value = displayMode;
+
+      function applyDisplayMode(mode){
+        displayMode = mode;
+        localStorage.setItem('craftClock.displayMode', mode);
+        if(mode === 'analog'){
+          if(analogEl) { analogEl.style.display = 'flex'; analogEl.setAttribute('aria-hidden','false'); }
+          if(clockEl) clockEl.style.display = 'none';
+          if(dateEl) dateEl.style.display = 'none';
+        } else {
+          if(analogEl) { analogEl.style.display = 'none'; analogEl.setAttribute('aria-hidden','true'); }
+          if(clockEl) clockEl.style.display = '';
+          if(dateEl) dateEl.style.display = '';
+        }
+      }
+      applyDisplayMode(displayMode);
+
+      if(displayModeSelect){
+        displayModeSelect.addEventListener('change',(e)=>{ applyDisplayMode(e.target.value); });
+      }
+
+      function updateAnalog(now){
+        if(!hourHand || !minuteHand || !secondHand) return;
+        const ms = now.getMilliseconds();
+        let hours = now.getHours();
+        if(!use24) hours = hours % 12;
+        const minutes = now.getMinutes();
+        const seconds = now.getSeconds();
+        const hourAngle = (hours % 12) * 30 + (minutes/60)*30;
+        const minuteAngle = minutes * 6 + (seconds/60)*6;
+        const secondAngle = (seconds + ms/1000) * 6;
+        hourHand.setAttribute('transform', `rotate(${hourAngle})`);
+        minuteHand.setAttribute('transform', `rotate(${minuteAngle})`);
+        secondHand.setAttribute('transform', `rotate(${secondAngle})`);
+        secondHand.style.display = showSeconds ? '' : 'none';
+      }
+
+      // Hook analog into the existing update loop
+      const originalUpdate = update;
+      function combinedUpdate(){
+        originalUpdate();
+        const now = new Date();
+        updateAnalog(now);
+      }
+      // replace interval with combined updater
+      // clear previous interval by storing id isn't available here; we just create another timer
+      setInterval(()=>{ if(displayMode==='analog') combinedUpdate(); else combinedUpdate(); }, 250);
     })();
 
     // Particles canvas (blocky particles to fit Minecraft feel)
